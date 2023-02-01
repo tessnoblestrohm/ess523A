@@ -1,0 +1,189 @@
+---
+title: "ChatGPT Analysis of Mean Discharge in a River"
+author: "Matt Ross"
+date: "2023-01-23"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r R Setup}
+library(tidyverse)
+library(httr)
+library(jsonlite)
+```
+
+# ChatGPT, the analyst
+
+For this assignment you will be asking ChatGPT to conduct an analysis of
+mean river discharge for any river station in the USA. You can use the
+Poudre River in Fort Collins if you want, but I encourage you to find
+other USGS stations that you are interested in. This assignment will
+have three prompts for ChatGPT, and you will need to troubleshoot this
+code for each prompt. The prompts are:
+
+1.  *Using R, Download daily discharge data for XX river in YY city from
+    1990-2022 (you pick the river and the city).* You can choose to
+    provide ChatGPT with an actual USGS station ID which will produce
+    less errors, or you can see how well it figures out station ids (its
+    bad at this for some reason). You may also need to provide it with
+    specific package recommendations (as I do in the videos).
+
+2.  How would I take the summertime (June 21 - Sept 21) annual mean of
+    this data and plot it with year on the x-axis and summertime mean
+    flow on the y axis.
+
+3.  How would I Use a linear model to determine if summer annual mean
+    discharge is changing?
+
+4 (Bonus). Why might a linear model be a poor choice for this analysis?
+
+## Data Download
+
+```{r}
+library(dataRetrieval)
+
+# Define the start and end dates for the data query
+start <- "1990-01-01"
+end <- "2022-12-31"
+
+# Retrieve the data for site 01372043
+HudsonData <- readNWISdv(siteNumber = "01358000",
+                         parameterCd = "00060",
+                         startDate = start,
+                         endDate = end)
+
+# Print the data
+print(HudsonData)
+
+```
+
+## Data analysis and visualization
+
+"You can use R to take the summertime annual mean of the data and plot
+it with year on the x-axis and summertime mean flow on the y axis by
+following these steps:
+
+Subset the data to include only the dates between June 21 and September
+21"
+
+```{r}
+# Convert the date column to a Date class
+HudsonData$datetime <- as.Date(HudsonData$Date, format = "%Y-%m-%d")
+
+
+# Extract data between June 21 and September 21 for all years
+summer_data <- HudsonData[HudsonData$Date >= as.Date("1990-06-21") & HudsonData$Date <= as.Date("2022-09-21") & year(HudsonData$Date) >= 1990 & year(HudsonData$Date) <= 2022, ]
+
+```
+
+Group the data by year and calculate the annual mean flow for the
+summertime
+
+```{r}
+# Group the data by year
+summer_data_by_year <- summer_data %>% 
+  mutate(year = year(datetime), 
+         months = month(Date)) %>%
+  filter(months %in% 6:10) %>%
+  group_by(year) %>%
+  summarise(mean_flow = mean(X_00060_00003,
+                             na.rm = T))
+
+```
+
+Plot the data using the "ggplot2" package
+
+```{r}
+library(ggplot2)
+
+# Plot the data
+ggplot(summer_data_by_year, aes(x =year, y = mean_flow)) + 
+  geom_line() +
+  xlab("Year") +
+  ylab("Summertime Mean Flow") +
+  ggtitle("Summertime Annual Mean Flow")
+
+```
+
+## Model output
+
+You can use a linear model in R to determine if the summer annual mean
+discharge is changing by following these steps:
+
+Group the data by year and calculate the annual mean flow for the
+summertime
+
+```{r}
+
+# Calculate the annual mean flow (we did this earlier, so I've #'d it)
+# annual_mean_flow <- summer_data_by_year %>% 
+# summarise(mean_flow = mean(flow))
+
+```
+
+Fit a linear model to the annual mean flow data
+
+```{r}
+# Fit a linear model
+model <- lm(data = summer_data_by_year, mean_flow ~ year)
+
+# Summarize the model and find the p-value
+summary(model)
+```
+
+P-value = 0.9752
+
+Plot the results
+
+```{r}
+# Plot the results
+library(ggplot2)
+
+ggplot(summer_data_by_year, aes(x = year, y = mean_flow)) +
+  geom_point() + 
+  geom_line(aes(y = predict(model))) +
+  xlab("Year") +
+  ylab("Summertime Mean Flow") +
+  ggtitle("Summertime Annual Mean Flow")
+```
+
+## Bonus - why linear models are dangerous time-series analysis tools.
+
+When asked "why might a linear model be a bad choice for analysis for
+this dataset?" Chat GPT responds with this:
+
+*"A linear model may be a bad choice for analysis of this dataset for
+several reasons:*
+
+*Non-linear trends: If the data has a non-linear trend over time, a
+linear model may not be able to capture the underlying patterns in the
+data. A more appropriate model in this case would be a non-linear
+regression model or a more complex time series model.*
+
+*Autocorrelation: If the summertime annual mean discharge is
+autocorrelated, meaning that the value at a given time is related to the
+value at a previous time, then a linear model may not be appropriate. In
+this case, a time series model such as ARIMA or SARIMA would be more
+appropriate.*
+
+*Lack of independence: If the summertime annual mean discharge values
+are not independent, meaning that they are related to each other, then a
+linear model may not be appropriate. In this case, a time series model
+that accounts for the dependence structure of the data would be more
+appropriate.*
+
+*Outliers or extreme values: If the data contains outliers or extreme
+values, a linear model may not be appropriate, as it assumes that the
+data follows a normal distribution and may be influenced by these
+outliers or extreme values. In this case, a more robust regression
+method, such as quantile regression, would be more appropriate.*
+
+*These are some of the reasons why a linear model may be a bad choice
+for analysis for this dataset. However, the best choice of model will
+depend on the specifics of the data and the research question being
+asked, so it's important to carefully consider the underlying patterns
+in the data before selecting a model."*
+
+Chat GPT is correct on a few points with this dataset: not only is the data not independent and autocorrelated (ie: the value of a data point is related to the values preceding and following it chronologically), but it also contains an outlier that can be seen in the graphs in the late 90s, making a linear model a poor choice of analysis for this data.
